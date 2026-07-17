@@ -157,11 +157,19 @@ $("l-pw").addEventListener("keydown",e=>{if(e.key==="Enter")doLogin();});
 $("logout-btn").onclick=()=>auth.signOut();
 
 let sub=null;
+const seqCache={};
+async function enrich(arr){
+  const missing=arr.filter(o=>!o.seq && !(o.code in seqCache));
+  await Promise.all(missing.map(async o=>{
+    try{ const t=await db.collection("as_kuji_tickets").doc(o.code).get(); seqCache[o.code]=t.exists?(t.data().seq||0):0; }catch(e){ seqCache[o.code]=0; }
+  }));
+  arr.forEach(o=>{ if(!o.seq && seqCache[o.code]) o.seq=seqCache[o.code]; });
+}
 auth.onAuthStateChanged(user=>{
   if(user){
     $("login").classList.remove("on");
     $("pill").textContent=user.email;
-    if(!sub){ sub=col.onSnapshot(s=>render(s.docs.map(d=>({code:d.id,...d.data()}))),
+    if(!sub){ sub=col.onSnapshot(async s=>{ const arr=s.docs.map(d=>({code:d.id,...d.data()})); await enrich(arr); render(arr); },
       ()=>{ $("active").innerHTML='<div class="empty">データを取得できませんでした。</div>'; }); }
   }else{
     $("login").classList.add("on");

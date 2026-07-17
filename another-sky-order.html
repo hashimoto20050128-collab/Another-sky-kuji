@@ -31,12 +31,15 @@
   .mcode{width:100%;text-align:center;font-family:"Zen Maru Gothic";font-weight:900;font-size:30px;letter-spacing:.2em;padding:14px;margin-top:12px;background:rgba(11,16,38,.6);border:2px solid var(--line);border-radius:12px;color:var(--ink);text-transform:uppercase;outline:none;display:none}
   .note{color:var(--muted);font-size:12px;margin-top:12px;line-height:1.6}
   .err{color:#FF8FA0;font-weight:700}
-  /* order list */
+  .wait{margin:2px 0 14px;padding:12px;border-radius:14px;background:rgba(94,230,200,.1);border:1px solid rgba(94,230,200,.3);font-size:15px;font-weight:700}
+  .wait b{font-family:"Zen Maru Gothic";font-size:22px;color:var(--aurora-a);margin:0 3px}
   .olist{display:flex;flex-direction:column;gap:10px;margin-top:8px;text-align:left}
   .ocard{display:flex;align-items:center;justify-content:space-between;gap:10px;background:rgba(11,16,38,.4);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
   .ocard.calling{border-color:transparent;background:linear-gradient(135deg,rgba(255,207,107,.16),rgba(242,169,59,.12));box-shadow:0 0 0 1px rgba(255,207,107,.4) inset}
   .ocard.done{opacity:.6}
-  .onum{font-family:"Zen Maru Gothic";font-weight:900;font-size:26px}
+  .oinfo{display:flex;flex-direction:column;gap:2px}
+  .onum{font-family:"Zen Maru Gothic";font-weight:900;font-size:26px;line-height:1}
+  .pos{font-size:11.5px;color:var(--muted)}
   .statusbadge{display:inline-block;font-weight:800;font-size:12px;padding:6px 13px;border-radius:999px;border:1px solid var(--line);white-space:nowrap}
   .statusbadge.waiting{color:var(--aurora-a);border-color:rgba(94,230,200,.4)}
   .statusbadge.calling{color:#0a0f24;background:linear-gradient(135deg,var(--gold),var(--gold-deep));border-color:transparent}
@@ -72,6 +75,7 @@
   <div class="card" id="status-view" style="display:none">
     <div class="kicker">PICKUP</div>
     <p class="h display">受け取り状況</p>
+    <div class="wait" id="wait"></div>
     <div id="ready-wrap"></div>
     <div class="olist" id="olist"></div>
     <button class="btn ghost" id="add-btn" style="margin-top:14px">＋ 券を追加で登録する</button>
@@ -102,28 +106,25 @@ const $=id=>document.getElementById(id);
 firebase.initializeApp(FIREBASE_CONFIG);
 const db=firebase.firestore();
 
-let orders=[];               // [{code,seq}]
-const subs={}, statusMap={}, lastMap={};
-let ready=false;
+let orders=[];          // 自分の登録券 [{code,seq}]
+let allDocs=[];         // 全注文（待ち人数・状態用）
+const lastMap={};       // code -> 直近の状態
+let colUnsub=null, ready=false;
 
 function padNo(s){ return "No."+String(s).padStart(3,"0"); }
 function numOf(o){ return o.seq?padNo(o.seq):o.code; }
-const VALID=/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}$/;   // 実際の券コードで使う文字だけ
+const VALID=/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}$/;
 function validCode(c){ return VALID.test(c||""); }
 function parseTicket(txt){
   txt=(txt||"").trim();
   let c=null,s=null;
   const mc=txt.match(/[?&]c=([A-Za-z0-9]{4})/); if(mc)c=mc[1].toUpperCase();
   const mn=txt.match(/[?&]n=(\d+)/); if(mn)s=parseInt(mn[1],10);
-  if(!c && !/https?:\/\//i.test(txt)){   // URLの末尾（.html等）を誤検出しない
-    const t=txt.replace(/^ASQR:/i,"");
-    const m=t.match(/([A-Za-z0-9]{4})\s*$/);
-    if(m)c=m[1].toUpperCase();
-  }
+  if(!c && !/https?:\/\//i.test(txt)){ const t=txt.replace(/^ASQR:/i,""); const m=t.match(/([A-Za-z0-9]{4})\s*$/); if(m)c=m[1].toUpperCase(); }
   return {code:c,seq:s};
 }
 
-/* ---- 端末に登録済みの券を記憶（複数対応） ---- */
+/* ---- この端末に登録済みの券を記憶（複数対応） ---- */
 const LS="as_orders_v2";
 function saveOrders(){ try{ localStorage.setItem(LS,JSON.stringify(orders)); }catch(e){} }
 function loadOrders(){
@@ -134,17 +135,11 @@ function loadOrders(){
   return [];
 }
 
-/* ---- audio ---- */
-let audioCtx=null;
+/* ---- audio + 通知（最初の操作で自動オン） ---- */
+let audioCtx=null,armed=false;
 function ensureAudio(){ if(!audioCtx){try{audioCtx=new (window.AudioContext||window.webkitAudioContext)();}catch(e){}} return audioCtx; }
 function primeAudio(){const c=ensureAudio();if(c&&c.state==="suspended")c.resume();}
-let armed=false;
-function arm(){
-  if(armed)return; armed=true; ready=true;
-  primeAudio();
-  try{ if("Notification" in window && Notification.permission==="default") Notification.requestPermission(); }catch(e){}
-  renderReady();
-}
+function arm(){ if(armed)return; armed=true; ready=true; primeAudio(); try{ if("Notification" in window && Notification.permission==="default") Notification.requestPermission(); }catch(e){} renderReady(); }
 document.addEventListener("pointerdown",arm);
 document.addEventListener("touchstart",arm);
 document.addEventListener("click",arm);
@@ -152,7 +147,7 @@ function tone(freqs,dur,gain){const c=ensureAudio();if(!c)return;if(c.state==="s
 function alarm(){let n=0;const iv=setInterval(()=>{tone([1319,988,1319],0.16,0.3);if(++n>=4)clearInterval(iv);},600);tone([1319,988,1319],0.16,0.3);try{navigator.vibrate&&navigator.vibrate([300,150,300,150,600]);}catch(e){}}
 
 /* ---- views ---- */
-function showStatusView(){ $("scan-view").style.display="none"; $("status-view").style.display="block"; $("foot").textContent="このページを閉じても、もう一度開けば状況を確認できます。呼び出しを受け取るにはページを開いたままにしてください。"; renderReady(); renderList(); }
+function showStatusView(){ $("scan-view").style.display="none"; $("status-view").style.display="block"; $("foot").textContent="このページを閉じても、もう一度開けば状況を確認できます。呼び出しを受け取るにはページを開いたままにしてください。"; renderReady(); renderList(); renderWait(); }
 function showScan(){ $("status-view").style.display="none"; $("scan-view").style.display="block"; $("back-btn").style.display=orders.length?"block":"none"; startCam(); }
 
 /* ---- camera / manual ---- */
@@ -165,7 +160,7 @@ async function startCam(){
     scanner=new Html5Qrcode("reader");
     await scanner.start({facingMode:"environment"},{fps:10,qrbox:220},txt=>{
       const r=parseTicket(txt);
-      if(!r.code){$("scan-msg").textContent="うまく読み取れませんでした。もう一度お試しください。";return;}
+      if(!validCode(r.code)){$("scan-msg").textContent="うまく読み取れませんでした。もう一度お試しください。";return;}
       stopCam(); addOrder(r.code,r.seq); showStatusView();
     },()=>{});
   }catch(e){ $("scan-msg").textContent="カメラを起動できませんでした。カメラの使用を許可するか、「コードを手入力」からご登録ください。"; $("reader").style.display="none";scanner=null; }
@@ -180,35 +175,36 @@ $("manual-btn").onclick=()=>{
   if(show)m.focus();
 };
 $("mcode").addEventListener("input",()=>{$("mcode").value=$("mcode").value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,4);});
-$("mreg-btn").onclick=()=>{ const v=$("mcode").value.trim().toUpperCase(); if(v.length!==4){$("scan-msg").textContent="4文字のコードを入力してください。";return;} $("mcode").value=""; stopCam(); addOrder(v,null); showStatusView(); };
+$("mreg-btn").onclick=()=>{ const v=$("mcode").value.trim().toUpperCase(); if(!validCode(v)){$("scan-msg").textContent="正しい4文字のコードを入力してください。";return;} $("mcode").value=""; stopCam(); addOrder(v,null); showStatusView(); };
 $("back-btn").onclick=()=>{ stopCam(); showStatusView(); };
 $("add-btn").onclick=()=>{ showScan(); };
 
-/* ---- register + subscribe (per order) ---- */
+/* ---- register + 全体購読 ---- */
 async function addOrder(code,seq){
   if(!validCode(code)) return;
   if(!orders.some(o=>o.code===code)){ orders.push({code,seq:seq||0}); saveOrders(); }
   const ref=db.collection(ORDERS).doc(code);
   try{ const snap=await ref.get(); if(!snap.exists) await ref.set({code,seq:seq||0,status:"waiting",registeredAt:Date.now()}); }catch(e){}
-  if(subs[code])return;
-  subs[code]=ref.onSnapshot(d=>onUpdate(code, d.exists?(d.data().status||"waiting"):"waiting"), ()=>{});
-}
-
-function callingList(){ return orders.filter(o=>statusMap[o.code]==="calling"); }
-function onUpdate(code,status){
-  const was=lastMap[code];
-  statusMap[code]=status; lastMap[code]=status;
+  startColSub();
   renderList();
-  if(status==="calling" && was!=="calling"){
-    const nums=callingList().map(numOf);
-    $("call-num").textContent=nums.join("　");
-    $("call").classList.add("on");
-    if(ready)alarm();
-    try{ if("Notification" in window && Notification.permission==="granted") new Notification("Another Sky｜お呼び出しです",{body:numOf({code,seq:(orders.find(o=>o.code===code)||{}).seq})+" の方、カウンターへお越しください"}); }catch(e){}
-  } else if($("call").classList.contains("on")){
-    const nums=callingList().map(numOf);
-    if(nums.length)$("call-num").textContent=nums.join("　"); else $("call").classList.remove("on");
-  }
+}
+function startColSub(){
+  if(colUnsub)return;
+  colUnsub=db.collection(ORDERS).onSnapshot(s=>{ allDocs=s.docs.map(d=>({code:d.id,...d.data()})); onData(); }, ()=>{});
+}
+function docFor(code){ return allDocs.find(d=>d.code===code); }
+function myStatus(code){ const d=docFor(code); return d?(d.status||"waiting"):"waiting"; }
+function myCalling(){ return orders.filter(o=>myStatus(o.code)==="calling"); }
+function waitingCount(){ return allDocs.filter(d=>d.status!=="done").length; }
+function aheadOf(code){ const d=docFor(code); if(!d)return 0; const my=d.registeredAt||0; return allDocs.filter(x=>x.status!=="done" && (x.registeredAt||0)<my).length; }
+
+function onData(){
+  orders.forEach(o=>{ const d=docFor(o.code); if(d&&d.seq&&!o.seq){o.seq=d.seq; saveOrders();} });
+  let newCall=false;
+  orders.forEach(o=>{ const st=myStatus(o.code); if(st==="calling" && lastMap[o.code]!=="calling") newCall=true; lastMap[o.code]=st; });
+  renderList(); renderWait();
+  if(newCall) triggerCall();
+  else if($("call").classList.contains("on")){ const nums=myCalling().map(numOf); if(nums.length)$("call-num").textContent=nums.join("　"); else $("call").classList.remove("on"); }
 }
 
 /* ---- render ---- */
@@ -218,12 +214,26 @@ function renderReady(){
     ? '<p class="note" style="color:var(--aurora-a)">通知オン：呼び出しをお待ちください。</p>'
     : '<p class="note">画面を1回タップすると、呼び出し通知（音・バイブ・通知）がオンになります。</p>';
 }
+function renderWait(){
+  const n=waitingCount();
+  $("wait").innerHTML='現在 <b>'+n+'</b> 人が受け取り待ちです';
+}
 function renderList(){
   if(!orders.length){ $("olist").innerHTML='<p class="note">登録された券がありません。</p>'; return; }
   $("olist").innerHTML=orders.map(o=>{
-    const st=statusMap[o.code]||"waiting";
-    return '<div class="ocard '+st+'"><span class="onum display">'+numOf(o)+'</span><span class="statusbadge '+st+'">'+STLABEL[st]+'</span></div>';
+    const st=myStatus(o.code);
+    let extra="";
+    if(st==="waiting"){ extra='<div class="pos">あなたの番まで あと約 '+aheadOf(o.code)+' 人</div>'; }
+    else if(st==="calling"){ extra='<div class="pos" style="color:var(--gold-deep)">カウンターへお越しください</div>'; }
+    return '<div class="ocard '+st+'"><div class="oinfo"><span class="onum display">'+numOf(o)+'</span>'+extra+'</div><span class="statusbadge '+st+'">'+STLABEL[st]+'</span></div>';
   }).join("");
+}
+function triggerCall(){
+  const nums=myCalling().map(numOf); if(!nums.length)return;
+  $("call-num").textContent=nums.join("　");
+  $("call").classList.add("on");
+  if(ready)alarm();
+  try{ if("Notification" in window && Notification.permission==="granted") new Notification("Another Sky｜お呼び出しです",{body:nums.join("・")+" の方、カウンターへお越しください"}); }catch(e){}
 }
 $("call-close").onclick=()=>$("call").classList.remove("on");
 
@@ -231,7 +241,7 @@ $("call-close").onclick=()=>$("call").classList.remove("on");
 (function(){
   const r=parseTicket(location.href);
   const list=loadOrders();
-  if(r.code && !list.some(o=>o.code===r.code)) list.push({code:r.code,seq:r.seq||0});
+  if(validCode(r.code) && !list.some(o=>o.code===r.code)) list.push({code:r.code,seq:r.seq||0});
   if(list.length){ showStatusView(); list.forEach(o=>addOrder(o.code,o.seq)); }
   else showScan();
 })();

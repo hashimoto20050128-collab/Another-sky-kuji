@@ -116,7 +116,7 @@
 
   /* ===== Tickets (長方形・切りやすく) ===== */
   #tickets{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-top:16px}
-  .ticket{background:#fff;color:#12183a;border-radius:0;padding:0;text-align:center;position:relative;overflow:hidden;border:1px dashed #b9c0da;margin:-0.5px;height:330px;display:flex;flex-direction:column}
+  .ticket{background:#fff;color:#12183a;border-radius:0;padding:0;text-align:center;position:relative;overflow:hidden;border:1px dashed #b9c0da;margin:-0.5px;height:375px;display:flex;flex-direction:column}
   .ticket.empty{visibility:hidden}
   .ticket .band{display:block;width:100%;height:7px;flex:none}
   .ticket .inner{padding:9px 10px 8px;flex:1;display:flex;flex-direction:column}
@@ -124,22 +124,28 @@
   .ticket .promo b{color:#b91c1c;font-size:11px}
   .ticket .tt{font-family:"Zen Maru Gothic";font-weight:900;font-size:9.5px;margin:2px 0 6px;letter-spacing:.04em;color:#3a4790}
   .ticket .qrbox{display:flex;justify-content:center;margin:0 auto 6px}
-  .ticket .qrbox img,.ticket .qrbox canvas{width:88px!important;height:88px!important}
+  .ticket .qrbox img,.ticket .qrbox canvas{width:80px!important;height:80px!important}
   .ticket .tcode{font-family:"Zen Maru Gothic";font-weight:900;font-size:20px;letter-spacing:.16em;color:#12183a}
   .ticket .ccode{font-size:10px;color:#8b93b8;letter-spacing:.06em;margin-top:3px}
   .ticket .ccode b{color:#12183a;font-family:"Zen Maru Gothic";letter-spacing:.14em}
   .ticket .seqlabel{font-size:11px;color:#3a4790;font-weight:700;margin-top:7px}
   .ticket .seqno{font-family:"Zen Maru Gothic";font-weight:900;font-size:26px;color:#12183a;letter-spacing:.04em;line-height:1.05}
   .ticket .qrcap{font-size:8.5px;line-height:1.35;color:#5a6294;margin:5px 3px 2px;font-weight:700}
-  .ticket .stub{border-top:1px dashed #9aa1c4;margin-top:auto;padding:6px 4px 8px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:10px;color:#3a4790;font-weight:700;position:relative}
+  .ticket .stub{border-top:1px dashed #9aa1c4;margin-top:auto;padding:8px 6px 8px;display:flex;flex-direction:column;align-items:center;gap:5px;position:relative}
   .ticket .stub .scis{position:absolute;left:4px;top:-8px;font-size:11px;color:#9aa1c4}
-  .ticket .stub b{font-family:"Zen Maru Gothic";font-size:15px;letter-spacing:.12em}
+  .ticket .stub-row{display:flex;align-items:center;justify-content:center;gap:8px}
+  .ticket .stub-qr{flex:none;display:flex}
+  .ticket .stub-qr img,.ticket .stub-qr canvas{width:52px!important;height:52px!important}
+  .ticket .stub-info{text-align:left;color:#3a4790;font-weight:700;line-height:1.3}
+  .ticket .stub-info .stub-no{font-size:10px}
+  .ticket .stub-info .stub-no b{font-family:"Zen Maru Gothic";font-size:15px;letter-spacing:.1em}
+  .ticket .stub-cap2{font-size:8px;color:#5a6294;font-weight:700;line-height:1.35;text-align:center}
   /* back = 注文票 */
-  .ticket.back .inner{padding:12px 12px 14px;text-align:left}
-  .ticket.back .bt{font-family:"Zen Maru Gothic";font-weight:900;font-size:12px;color:#3a4790;text-align:center;margin-bottom:12px;letter-spacing:.04em}
-  .ticket.back .orow{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;margin:0 0 14px}
+  .ticket.back .inner{padding:30px 14px 16px;text-align:left}
+  .ticket.back .bt{font-family:"Zen Maru Gothic";font-weight:900;font-size:12px;color:#3a4790;text-align:center;margin-bottom:22px;letter-spacing:.04em}
+  .ticket.back .orow{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;margin:0 0 34px}
   .ticket.back .box{display:inline-block;flex:none;width:34px;height:24px;border:1px solid #7c86ad}
-  .ticket.back .line{flex:1;border-bottom:1px solid #7c86ad;height:20px}
+  .ticket.back .line{flex:1;border-bottom:1px solid #7c86ad;height:24px}
   .ticket.back .bno{position:absolute;top:6px;right:8px;font-size:9px;color:#9aa1c4;font-weight:700;font-family:"Zen Maru Gothic"}
 
   .stat-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px}
@@ -465,7 +471,7 @@ function frontCard(code,seq){
     <div class="ccode">コード <b>${code}</b></div>
     <div class="seqlabel">整理番号</div>
     <div class="seqno">${seqStr(seq)}</div>
-    <div class="stub"><span class="scis">✂</span>整理番号　<b>${String(seq).padStart(3,"0")}</b></div>
+    <div class="stub"><span class="scis">✂</span><div class="stub-row"><div class="stub-qr" id="sqr-${code}"></div><div class="stub-info"><div class="stub-no">整理番号 <b>${String(seq).padStart(3,"0")}</b></div></div></div><div class="stub-cap2">▲待ち人数の確認や受け取り可能時に通知を受け取れます</div></div>
   </div></div>`;
 }
 function backCard(code,seq){
@@ -494,7 +500,9 @@ function renderSide(side){
   box.innerHTML=codes.map(c=>c===null?emptyCard():(side==="front"?frontCard(c,lastTickets[c].seq):backCard(c,lastTickets[c].seq))).join("");
   if(side==="front"){
     Object.keys(lastTickets).forEach(code=>{
-      try{new QRCode(document.getElementById("qr-"+code),{text:qrText(code,lastTickets[code].seq),width:88,height:88,colorDark:"#12183a",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M});}catch(e){}
+      var _t=qrText(code,lastTickets[code].seq);
+      try{new QRCode(document.getElementById("qr-"+code),{text:_t,width:80,height:80,colorDark:"#12183a",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M});}catch(e){}
+      try{var _s=document.getElementById("sqr-"+code); if(_s) new QRCode(_s,{text:_t,width:56,height:56,colorDark:"#12183a",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M});}catch(e){}
     });
   }
 }
@@ -533,7 +541,12 @@ async function processCode(code){
 /* 抽選で読み取った券を、呼び出し管理の一覧（as_orders）へ自動登録（クラウド時のみ） */
 async function ensureOrder(code,seq){
   if(!CLOUD || !ordersCol) return;
-  try{ const ref=ordersCol.doc(code); const snap=await ref.get(); if(!snap.exists) await ref.set({code,seq:seq||0,status:"waiting",registeredAt:Date.now()}); }catch(e){}
+  try{
+    const ref=ordersCol.doc(code);
+    const snap=await ref.get();
+    if(!snap.exists){ await ref.set({code,seq:seq||0,status:"waiting",registeredAt:Date.now()}); }
+    else if(seq && !snap.data().seq){ await ref.update({seq}); }   // 整理番号が未設定の注文に補完
+  }catch(e){}
 }
 
 /* manual input toggle */
