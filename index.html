@@ -273,8 +273,16 @@
 <script>
 /* ============================================================
    Another Sky ｜ 抽選くじ
+   ------------------------------------------------------------
+   ▼ クラウド運用の設定方法（どちらか一方でOK）
+     方法A：下の各行の「//」を外して値を入れる（変数名は FIREBASE_CONFIG のまま）
+     方法B：Firebaseコンソールのスニペット
+            （const firebaseConfig = { ... };）を丸ごとコピーして、
+            下の const FIREBASE_CONFIG の“すぐ上”に貼り付ける。
+            ※このアプリは FIREBASE_CONFIG / firebaseConfig のどちらの名前でも動きます。
+     設定しなければ、ログイン不要の「この端末に保存」モードで動きます。
    ============================================================ */
-const firconst FIREBASE_CONFIG = {
+const FIREBASE_CONFIG = {
   apiKey: "AIzaSyBhcZR0uO8384IGtkOE_8mRx7MatiJX4sQ",
   authDomain: "another-sky-kuji-9606f.firebaseapp.com",
   projectId: "another-sky-kuji-9606f",
@@ -638,10 +646,13 @@ document.getElementById("login-pw").addEventListener("keydown",e=>{if(e.key==="E
 
 /* boot */
 (async function boot(){
-  const configured=FIREBASE_CONFIG&&FIREBASE_CONFIG.projectId&&typeof firebase!=="undefined";
+  let cfg=null;
+  try{ if(typeof FIREBASE_CONFIG!=="undefined" && FIREBASE_CONFIG && FIREBASE_CONFIG.projectId) cfg=FIREBASE_CONFIG; }catch(e){}
+  try{ if(!cfg && typeof firebaseConfig!=="undefined" && firebaseConfig && firebaseConfig.projectId) cfg=firebaseConfig; }catch(e){}
+  const configured=cfg && typeof firebase!=="undefined";
   if(configured){
     try{
-      firebase.initializeApp(FIREBASE_CONFIG);
+      firebase.initializeApp(cfg);
       db=firebase.firestore();col=db.collection(COLLECTION);Backend=CloudBackend;CLOUD=true;auth=firebase.auth();
       document.getElementById("login").classList.add("on"); // 認証確定まで表示
       auth.onAuthStateChanged(user=>{
