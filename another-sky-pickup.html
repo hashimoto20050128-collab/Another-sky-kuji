@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Another Sky ｜ 呼び出し管理</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<style>
+  :root{--gold:#FFCF6B;--gold-deep:#F2A93B;--aurora-a:#5EE6C8;--aurora-b:#A78BFA;--coral:#FF7E86;--ink:#EDF1FF;--muted:#8E9AD0;--line:rgba(140,160,230,.16);--panel:#171f47;--panel-2:#1e2860;--bad:#FF8FA0}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;min-height:100%}
+  body{font-family:"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN",sans-serif;color:var(--ink);min-height:100vh;
+    background:radial-gradient(1000px 600px at 15% -10%,rgba(94,230,200,.12),transparent 60%),linear-gradient(180deg,#0a0f24,#0B1026 50%,#0a0e22)}
+  .display{font-family:"Zen Maru Gothic",sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:20px 16px 40px}
+  header{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+  .logo{display:flex;align-items:center;gap:9px;font-family:"Zen Maru Gothic";font-weight:900;font-size:18px}
+  .logo .moon{width:22px;height:22px;border-radius:50%;background:radial-gradient(circle at 32% 30%,#fff,var(--gold) 45%,var(--gold-deep));box-shadow:0 0 16px rgba(255,207,107,.5)}
+  .logo small{display:block;font-size:11px;color:var(--muted);letter-spacing:.14em;font-weight:500;margin-top:3px}
+  .spacer{flex:1}
+  .pill{font-size:11px;font-weight:700;padding:6px 11px;border-radius:999px;border:1px solid rgba(94,230,200,.4);color:var(--aurora-a)}
+  .btn{border:0;font-family:inherit;font-weight:800;font-size:15px;padding:14px;border-radius:13px;cursor:pointer;color:#0a0f24;background:linear-gradient(135deg,var(--gold),var(--gold-deep));box-shadow:0 12px 30px -12px rgba(242,169,59,.6)}
+  .btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);box-shadow:none;font-weight:700}
+  .btn.call{background:linear-gradient(135deg,var(--aurora-b),var(--aurora-a))}
+  .btn.slim{padding:9px 14px;font-size:13px;width:auto}
+  .btn:disabled{filter:grayscale(.4) opacity(.6)}
+  h2{font-family:"Zen Maru Gothic";font-size:15px;margin:22px 2px 10px;color:var(--muted);letter-spacing:.04em}
+  .list{display:flex;flex-direction:column;gap:10px}
+  .order{display:flex;align-items:center;gap:12px;background:linear-gradient(180deg,var(--panel),var(--panel-2));border:1px solid var(--line);border-radius:15px;padding:14px 16px}
+  .order.calling{border-color:rgba(94,230,200,.5);box-shadow:0 0 0 1px rgba(94,230,200,.3) inset}
+  .order .no{font-family:"Zen Maru Gothic";font-weight:900;font-size:26px;min-width:78px}
+  .order .meta{flex:1;min-width:0}
+  .order .meta .t{font-size:12px;color:var(--muted)}
+  .order .badge{display:inline-block;font-size:11px;font-weight:800;padding:3px 10px;border-radius:999px;margin-top:3px}
+  .badge.waiting{color:var(--muted);border:1px solid var(--line)}
+  .badge.calling{color:#0a0f24;background:linear-gradient(135deg,var(--aurora-b),var(--aurora-a))}
+  .actions{display:flex;gap:8px;flex-shrink:0}
+  .empty{color:var(--muted);text-align:center;padding:26px 10px;font-size:13.5px;line-height:1.7}
+  .done-wrap{margin-top:8px}
+  details summary{color:var(--muted);font-size:13px;cursor:pointer;padding:8px 2px}
+  .donerow{display:flex;justify-content:space-between;color:var(--muted);font-size:13px;padding:8px 4px;border-bottom:1px solid var(--line)}
+  .donerow b{font-family:"Zen Maru Gothic";color:var(--ink)}
+  /* login */
+  #login{position:fixed;inset:0;z-index:100;display:none;align-items:center;justify-content:center;padding:22px;background:linear-gradient(180deg,#0a0f24,#0b1026)}
+  #login.on{display:flex}
+  .lcard{background:linear-gradient(180deg,var(--panel),var(--panel-2));border:1px solid var(--line);border-radius:18px;padding:26px 22px;max-width:340px;width:100%;text-align:center}
+  .lcard h3{font-family:"Zen Maru Gothic";font-size:18px;margin:10px 0 4px}
+  .lcard p{color:var(--muted);font-size:12px;margin:0 0 16px}
+  .lcard input{width:100%;padding:13px 14px;background:rgba(11,16,38,.55);border:1px solid var(--line);border-radius:11px;color:var(--ink);font-family:inherit;font-size:16px;outline:none;margin-bottom:10px}
+  .lcard .btn{width:100%}
+  .lcard .err{color:var(--bad);font-size:12.5px;font-weight:700;min-height:18px;margin-top:6px}
+  .lcard .moon{width:38px;height:38px;border-radius:50%;margin:0 auto 6px;background:radial-gradient(circle at 32% 30%,#fff,var(--gold) 45%,var(--gold-deep));box-shadow:0 0 20px rgba(255,207,107,.5)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo"><span class="moon"></span><div>Another Sky<small>呼び出し管理</small></div></div>
+    <div class="spacer"></div>
+    <div class="pill" id="pill">…</div>
+  </header>
+
+  <h2>受付中（<span id="active-n">0</span>）</h2>
+  <div class="list" id="active"></div>
+
+  <div class="done-wrap">
+    <details>
+      <summary>受け渡し済み（<span id="done-n">0</span>）</summary>
+      <div id="done"></div>
+    </details>
+  </div>
+
+  <div style="margin-top:22px"><button class="btn ghost" id="logout-btn" style="width:100%">ログアウト</button></div>
+</div>
+
+<div id="login"><div class="lcard">
+  <div class="moon"></div>
+  <h3 class="display">呼び出し管理</h3>
+  <p>店員ログイン</p>
+  <input type="email" id="l-email" placeholder="メールアドレス" autocomplete="username">
+  <input type="password" id="l-pw" placeholder="パスワード" autocomplete="current-password">
+  <button class="btn" id="l-btn">ログイン</button>
+  <div class="err" id="l-err"></div>
+</div></div>
+
+<script>
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBhcZR0uO8384IGtkOE_8mRx7MatiJX4sQ",
+  authDomain: "another-sky-kuji-9606f.firebaseapp.com",
+  projectId: "another-sky-kuji-9606f",
+  storageBucket: "another-sky-kuji-9606f.firebasestorage.app",
+  messagingSenderId: "372480688726",
+  appId: "1:372480688726:web:6b77d1983691056cf471f7"
+};
+const ORDERS="as_orders";
+const $=id=>document.getElementById(id);
+
+firebase.initializeApp(FIREBASE_CONFIG);
+const db=firebase.firestore(), auth=firebase.auth();
+const col=db.collection(ORDERS);
+
+function noStr(o){ return o.seq?("No."+String(o.seq).padStart(3,"0")):o.code; }
+function timeStr(ts){ return ts?new Date(ts).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}):""; }
+
+async function setStatus(code,status){
+  const patch={status};
+  if(status==="calling")patch.calledAt=Date.now();
+  if(status==="done")patch.doneAt=Date.now();
+  try{ await col.doc(code).update(patch); }catch(e){ alert("更新できませんでした。通信をご確認ください。"); }
+}
+
+function render(orders){
+  orders.sort((a,b)=>(a.registeredAt||0)-(b.registeredAt||0));
+  const active=orders.filter(o=>o.status!=="done");
+  const done=orders.filter(o=>o.status==="done");
+  $("active-n").textContent=active.length;
+  $("done-n").textContent=done.length;
+
+  const A=$("active");
+  if(!active.length){ A.innerHTML='<div class="empty">受付中の注文はありません。<br>お客さんがくじ券のQRを読み込むと、ここに順番に表示されます。</div>'; }
+  else{
+    A.innerHTML=active.map(o=>{
+      const calling=o.status==="calling";
+      return '<div class="order'+(calling?' calling':'')+'">'+
+        '<div class="no display">'+noStr(o)+'</div>'+
+        '<div class="meta"><div class="t">受付 '+timeStr(o.registeredAt)+(o.calledAt?'／呼出 '+timeStr(o.calledAt):'')+'</div>'+
+          '<span class="badge '+(calling?'calling':'waiting')+'">'+(calling?'呼び出し中':'受付中')+'</span></div>'+
+        '<div class="actions">'+
+          '<button class="btn call slim" data-call="'+o.code+'">'+(calling?'再呼出':'呼び出し')+'</button>'+
+          '<button class="btn ghost slim" data-done="'+o.code+'">受渡済</button>'+
+        '</div></div>';
+    }).join("");
+    A.querySelectorAll("[data-call]").forEach(b=>b.onclick=()=>setStatus(b.dataset.call,"calling"));
+    A.querySelectorAll("[data-done]").forEach(b=>b.onclick=()=>setStatus(b.dataset.done,"done"));
+  }
+
+  $("done").innerHTML = done.length ? done.reverse().map(o=>
+    '<div class="donerow"><b>'+noStr(o)+'</b><span>'+timeStr(o.doneAt)+'</span></div>').join("")
+    : '<div class="empty">まだありません。</div>';
+}
+
+/* auth */
+function doLogin(){
+  const email=$("l-email").value.trim(),pw=$("l-pw").value,err=$("l-err");err.textContent="";
+  if(!email||!pw){err.textContent="メールとパスワードを入力してください。";return;}
+  const b=$("l-btn");b.disabled=true;b.textContent="ログイン中…";
+  auth.signInWithEmailAndPassword(email,pw).catch(()=>{err.textContent="ログインに失敗しました。";}).finally(()=>{b.disabled=false;b.textContent="ログイン";});
+}
+$("l-btn").onclick=doLogin;
+$("l-pw").addEventListener("keydown",e=>{if(e.key==="Enter")doLogin();});
+$("logout-btn").onclick=()=>auth.signOut();
+
+let sub=null;
+auth.onAuthStateChanged(user=>{
+  if(user){
+    $("login").classList.remove("on");
+    $("pill").textContent=user.email;
+    if(!sub){ sub=col.onSnapshot(s=>render(s.docs.map(d=>({code:d.id,...d.data()}))),
+      ()=>{ $("active").innerHTML='<div class="empty">データを取得できませんでした。</div>'; }); }
+  }else{
+    $("login").classList.add("on");
+    if(sub){sub();sub=null;}
+  }
+});
+</script>
+</body>
+</html>

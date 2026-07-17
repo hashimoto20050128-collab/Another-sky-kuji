@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Another Sky ｜ 受け取り</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+  :root{--gold:#FFCF6B;--gold-deep:#F2A93B;--aurora-a:#5EE6C8;--aurora-b:#A78BFA;--ink:#EDF1FF;--muted:#8E9AD0;--line:rgba(140,160,230,.16);--panel:#171f47;--panel-2:#1e2860}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;min-height:100%}
+  body{font-family:"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN",sans-serif;color:var(--ink);min-height:100vh;
+    background:radial-gradient(900px 600px at 20% -10%,rgba(94,230,200,.14),transparent 60%),radial-gradient(800px 700px at 100% 0%,rgba(167,139,250,.18),transparent 55%),linear-gradient(180deg,#0a0f24,#0B1026 45%,#0a0e22);
+    display:flex;align-items:flex-start;justify-content:center;padding:26px 16px 40px}
+  .display{font-family:"Zen Maru Gothic",sans-serif}
+  .wrap{width:100%;max-width:440px}
+  .logo{display:flex;align-items:center;gap:9px;font-family:"Zen Maru Gothic";font-weight:900;font-size:18px;justify-content:center;margin-bottom:18px}
+  .logo .moon{width:22px;height:22px;border-radius:50%;background:radial-gradient(circle at 32% 30%,#fff,var(--gold) 45%,var(--gold-deep));box-shadow:0 0 16px rgba(255,207,107,.5)}
+  .card{background:linear-gradient(180deg,var(--panel),var(--panel-2));border:1px solid var(--line);border-radius:20px;padding:26px 22px;text-align:center;box-shadow:0 24px 60px -30px #000}
+  .kicker{color:var(--aurora-a);font-weight:700;font-size:12px;letter-spacing:.24em;margin-bottom:8px}
+  .h{font-family:"Zen Maru Gothic";font-weight:900;font-size:22px;margin:0 0 6px}
+  .sub{color:var(--muted);font-size:12.5px;line-height:1.7;margin:8px 4px 0}
+  .btn{border:0;font-family:inherit;font-weight:800;font-size:16px;padding:15px;border-radius:14px;cursor:pointer;width:100%;color:#0a0f24;background:linear-gradient(135deg,var(--gold),var(--gold-deep));box-shadow:0 12px 30px -10px rgba(242,169,59,.6);margin-top:16px}
+  .btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);box-shadow:none;font-weight:700;font-size:14px;padding:12px}
+  #reader{width:100%;border-radius:14px;overflow:hidden;border:1px solid var(--line);margin-top:16px;display:none}
+  .scan-msg{color:var(--muted);font-size:12px;margin-top:10px;min-height:16px}
+  .mcode{width:100%;text-align:center;font-family:"Zen Maru Gothic";font-weight:900;font-size:30px;letter-spacing:.2em;padding:14px;margin-top:12px;background:rgba(11,16,38,.6);border:2px solid var(--line);border-radius:12px;color:var(--ink);text-transform:uppercase;outline:none;display:none}
+  .note{color:var(--muted);font-size:12px;margin-top:12px;line-height:1.6}
+  .err{color:#FF8FA0;font-weight:700}
+  /* order list */
+  .olist{display:flex;flex-direction:column;gap:10px;margin-top:8px;text-align:left}
+  .ocard{display:flex;align-items:center;justify-content:space-between;gap:10px;background:rgba(11,16,38,.4);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+  .ocard.calling{border-color:transparent;background:linear-gradient(135deg,rgba(255,207,107,.16),rgba(242,169,59,.12));box-shadow:0 0 0 1px rgba(255,207,107,.4) inset}
+  .ocard.done{opacity:.6}
+  .onum{font-family:"Zen Maru Gothic";font-weight:900;font-size:26px}
+  .statusbadge{display:inline-block;font-weight:800;font-size:12px;padding:6px 13px;border-radius:999px;border:1px solid var(--line);white-space:nowrap}
+  .statusbadge.waiting{color:var(--aurora-a);border-color:rgba(94,230,200,.4)}
+  .statusbadge.calling{color:#0a0f24;background:linear-gradient(135deg,var(--gold),var(--gold-deep));border-color:transparent}
+  .statusbadge.done{color:var(--muted)}
+  #call{position:fixed;inset:0;z-index:50;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;background:linear-gradient(135deg,var(--gold),var(--gold-deep));color:#3a1d00}
+  #call.on{display:flex;animation:flash 1s steps(1) infinite}
+  @keyframes flash{50%{background:linear-gradient(135deg,#fff2cf,var(--gold))}}
+  #call .big{font-family:"Zen Maru Gothic";font-weight:900;font-size:38px;line-height:1.2}
+  #call .num{font-family:"Zen Maru Gothic";font-weight:900;font-size:64px;margin:8px 0;line-height:1.1}
+  #call .msg{font-size:17px;font-weight:700;margin-top:6px}
+  #call button{margin-top:30px;border:0;background:#3a1d00;color:#fff;font-family:inherit;font-weight:800;font-size:16px;padding:14px 28px;border-radius:12px;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo"><span class="moon"></span>Another Sky</div>
+
+  <!-- SCAN / REGISTER -->
+  <div class="card" id="scan-view" style="display:none">
+    <div class="kicker">PICKUP</div>
+    <p class="h display">受け取り通知に登録</p>
+    <p class="sub">くじ券のQRコードを読み取ると、お呼び出しをこの端末で受け取れます。券が複数枚ある場合は、1枚ずつ読み取ってください。</p>
+    <div id="reader"></div>
+    <div class="scan-msg" id="scan-msg"></div>
+    <button class="btn" id="scan-btn">カメラで券のQRを読み取る</button>
+    <button class="btn ghost" id="manual-btn">コードを手入力</button>
+    <input class="mcode" id="mcode" maxlength="4" placeholder="＊＊＊＊" autocomplete="off">
+    <button class="btn" id="mreg-btn" style="display:none">登録する</button>
+    <button class="btn ghost" id="back-btn" style="display:none">登録済みの一覧へ戻る</button>
+  </div>
+
+  <!-- STATUS -->
+  <div class="card" id="status-view" style="display:none">
+    <div class="kicker">PICKUP</div>
+    <p class="h display">受け取り状況</p>
+    <div id="ready-wrap"></div>
+    <div class="olist" id="olist"></div>
+    <button class="btn ghost" id="add-btn" style="margin-top:14px">＋ 券を追加で登録する</button>
+  </div>
+
+  <p class="note" id="foot"></p>
+</div>
+
+<div id="call">
+  <div class="big display">お呼び出しです</div>
+  <div class="num display" id="call-num">—</div>
+  <div class="msg">カウンターまでお越しください🎏</div>
+  <button id="call-close">確認しました</button>
+</div>
+
+<script>
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBhcZR0uO8384IGtkOE_8mRx7MatiJX4sQ",
+  authDomain: "another-sky-kuji-9606f.firebaseapp.com",
+  projectId: "another-sky-kuji-9606f",
+  storageBucket: "another-sky-kuji-9606f.firebasestorage.app",
+  messagingSenderId: "372480688726",
+  appId: "1:372480688726:web:6b77d1983691056cf471f7"
+};
+const ORDERS="as_orders";
+const $=id=>document.getElementById(id);
+
+firebase.initializeApp(FIREBASE_CONFIG);
+const db=firebase.firestore();
+
+let orders=[];               // [{code,seq}]
+const subs={}, statusMap={}, lastMap={};
+let ready=false;
+
+function padNo(s){ return "No."+String(s).padStart(3,"0"); }
+function numOf(o){ return o.seq?padNo(o.seq):o.code; }
+function parseTicket(txt){
+  txt=(txt||"").trim();
+  let c=null,s=null;
+  const mc=txt.match(/[?&]c=([A-Za-z0-9]{4})/); if(mc)c=mc[1].toUpperCase();
+  const mn=txt.match(/[?&]n=(\d+)/); if(mn)s=parseInt(mn[1],10);
+  if(!c){ const t=txt.replace(/^ASQR:/i,""); const m=t.match(/([A-Za-z0-9]{4})\s*$/); if(m)c=m[1].toUpperCase(); }
+  return {code:c,seq:s};
+}
+
+/* ---- 端末に登録済みの券を記憶（複数対応） ---- */
+const LS="as_orders_v2";
+function saveOrders(){ try{ localStorage.setItem(LS,JSON.stringify(orders)); }catch(e){} }
+function loadOrders(){
+  try{
+    const r=localStorage.getItem(LS); if(r)return JSON.parse(r)||[];
+    const old=localStorage.getItem("as_order_last"); if(old){const o=JSON.parse(old);if(o&&o.code)return [o];}
+  }catch(e){}
+  return [];
+}
+
+/* ---- audio ---- */
+let audioCtx=null;
+function ensureAudio(){ if(!audioCtx){try{audioCtx=new (window.AudioContext||window.webkitAudioContext)();}catch(e){}} return audioCtx; }
+function primeAudio(){const c=ensureAudio();if(c&&c.state==="suspended")c.resume();}
+document.addEventListener("pointerdown",primeAudio);
+function tone(freqs,dur,gain){const c=ensureAudio();if(!c)return;if(c.state==="suspended")c.resume();let t=c.currentTime;freqs.forEach(f=>{const o=c.createOscillator(),g=c.createGain();o.type="sine";o.frequency.value=f;g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(gain||0.25,t+0.01);g.gain.exponentialRampToValueAtTime(0.0001,t+dur);o.connect(g).connect(c.destination);o.start(t);o.stop(t+dur+0.02);t+=dur;});}
+function alarm(){let n=0;const iv=setInterval(()=>{tone([1319,988,1319],0.16,0.3);if(++n>=4)clearInterval(iv);},600);tone([1319,988,1319],0.16,0.3);try{navigator.vibrate&&navigator.vibrate([300,150,300,150,600]);}catch(e){}}
+
+/* ---- views ---- */
+function showStatusView(){ $("scan-view").style.display="none"; $("status-view").style.display="block"; $("foot").textContent="このページを閉じても、もう一度開けば状況を確認できます。呼び出しを受け取るにはページを開いたままにしてください。"; renderReady(); renderList(); }
+function showScan(){ $("status-view").style.display="none"; $("scan-view").style.display="block"; $("back-btn").style.display=orders.length?"block":"none"; startCam(); }
+
+/* ---- camera / manual ---- */
+let scanner=null;
+async function startCam(){
+  if(scanner)return;
+  if(typeof Html5Qrcode==="undefined"){$("scan-msg").textContent="カメラを起動できません。「コードを手入力」からご登録ください。";return;}
+  $("reader").style.display="block";$("scan-msg").textContent="券のQRコードをカメラにかざしてください…";
+  try{
+    scanner=new Html5Qrcode("reader");
+    await scanner.start({facingMode:"environment"},{fps:10,qrbox:220},txt=>{
+      const r=parseTicket(txt);
+      if(!r.code){$("scan-msg").textContent="うまく読み取れませんでした。もう一度お試しください。";return;}
+      stopCam(); addOrder(r.code,r.seq); showStatusView();
+    },()=>{});
+  }catch(e){ $("scan-msg").textContent="カメラを起動できませんでした。カメラの使用を許可するか、「コードを手入力」からご登録ください。"; $("reader").style.display="none";scanner=null; }
+}
+function stopCam(){if(scanner){try{scanner.stop().then(()=>scanner.clear()).catch(()=>{});}catch(e){}scanner=null;}$("reader").style.display="none";}
+$("scan-btn").onclick=()=>{ if(scanner)stopCam(); else startCam(); };
+$("manual-btn").onclick=()=>{
+  const m=$("mcode"),reg=$("mreg-btn");
+  const show=m.style.display==="none"||!m.style.display;
+  m.style.display=show?"block":"none";reg.style.display=show?"block":"none";
+  $("manual-btn").textContent=show?"手入力を閉じる":"コードを手入力";
+  if(show)m.focus();
+};
+$("mcode").addEventListener("input",()=>{$("mcode").value=$("mcode").value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,4);});
+$("mreg-btn").onclick=()=>{ const v=$("mcode").value.trim().toUpperCase(); if(v.length!==4){$("scan-msg").textContent="4文字のコードを入力してください。";return;} $("mcode").value=""; stopCam(); addOrder(v,null); showStatusView(); };
+$("back-btn").onclick=()=>{ stopCam(); showStatusView(); };
+$("add-btn").onclick=()=>{ showScan(); };
+
+/* ---- register + subscribe (per order) ---- */
+async function addOrder(code,seq){
+  if(!orders.some(o=>o.code===code)){ orders.push({code,seq:seq||0}); saveOrders(); }
+  const ref=db.collection(ORDERS).doc(code);
+  try{ const snap=await ref.get(); if(!snap.exists) await ref.set({code,seq:seq||0,status:"waiting",registeredAt:Date.now()}); }catch(e){}
+  if(subs[code])return;
+  subs[code]=ref.onSnapshot(d=>onUpdate(code, d.exists?(d.data().status||"waiting"):"waiting"), ()=>{});
+}
+
+function callingList(){ return orders.filter(o=>statusMap[o.code]==="calling"); }
+function onUpdate(code,status){
+  const was=lastMap[code];
+  statusMap[code]=status; lastMap[code]=status;
+  renderList();
+  if(status==="calling" && was!=="calling"){
+    const nums=callingList().map(numOf);
+    $("call-num").textContent=nums.join("　");
+    $("call").classList.add("on");
+    if(ready)alarm();
+    try{ if("Notification" in window && Notification.permission==="granted") new Notification("Another Sky｜お呼び出しです",{body:numOf({code,seq:(orders.find(o=>o.code===code)||{}).seq})+" の方、カウンターへお越しください"}); }catch(e){}
+  } else if($("call").classList.contains("on")){
+    const nums=callingList().map(numOf);
+    if(nums.length)$("call-num").textContent=nums.join("　"); else $("call").classList.remove("on");
+  }
+}
+
+/* ---- render ---- */
+const STLABEL={waiting:"受付済み",calling:"呼び出し中",done:"受け渡し済み"};
+function renderReady(){
+  $("ready-wrap").innerHTML = ready
+    ? '<p class="note" style="color:var(--aurora-a)">通知オン：呼び出しをお待ちください。</p>'
+    : '<button class="btn" id="ready-btn">呼び出し通知をオンにする</button><p class="note">※音・バイブ・通知でお知らせします。上のボタンを一度タップしてください。</p>';
+  const rb=$("ready-btn"); if(rb)rb.onclick=enableAlerts;
+}
+function renderList(){
+  if(!orders.length){ $("olist").innerHTML='<p class="note">登録された券がありません。</p>'; return; }
+  $("olist").innerHTML=orders.map(o=>{
+    const st=statusMap[o.code]||"waiting";
+    return '<div class="ocard '+st+'"><span class="onum display">'+numOf(o)+'</span><span class="statusbadge '+st+'">'+STLABEL[st]+'</span></div>';
+  }).join("");
+}
+async function enableAlerts(){
+  ready=true; ensureAudio(); tone([880,1319],0.12,0.2);
+  try{ if("Notification" in window && Notification.permission==="default") await Notification.requestPermission(); }catch(e){}
+  renderReady();
+}
+$("call-close").onclick=()=>$("call").classList.remove("on");
+
+/* ---- entry ---- */
+(function(){
+  const r=parseTicket(location.href);
+  const list=loadOrders();
+  if(r.code && !list.some(o=>o.code===r.code)) list.push({code:r.code,seq:r.seq||0});
+  if(list.length){ showStatusView(); list.forEach(o=>addOrder(o.code,o.seq)); }
+  else showScan();
+})();
+</script>
+</body>
+</html>

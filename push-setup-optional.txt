@@ -1,0 +1,97 @@
+========================================================
+ （任意）バックグラウンド通知を有効にする ── FCM + Cloud Function
+========================================================
+
+■ まず前提
+order.html / pickup.html は、いまの状態でも「呼び出し」が届きます。
+お客さんが order ページを開いたまま待っていれば、店員が「呼び出し」を
+押した瞬間に、画面全体の呼び出し表示＋音＋バイブ＋（許可時）端末通知が
+出ます。これは追加費用ゼロ・今のFirebaseだけで動きます。
+
+このファイルの設定は「ページを閉じていても（バックグラウンドでも）通知を
+出したい」場合の“任意の上級設定”です。以下が必要になります。
+
+  - Firebase を Blaze（従量課金）プランに変更（無料枠内でも登録が必要）
+  - Cloud Functions のデプロイ（Firebase CLI）
+  - サービスワーカー（firebase-messaging-sw.js）をサイト直下に配置
+  - ウェブプッシュ証明書（VAPIDキー）の取得
+  - iPhone は「ホーム画面に追加したPWA」かつ iOS16.4+ のみ対応など制約あり
+
+コスト・手間が見合わないと感じたら、無理に設定する必要はありません。
+
+
+■ 手順の概要
+1) Firebaseコンソール → プロジェクトの設定 → Cloud Messaging
+   →「ウェブプッシュ証明書」で鍵ペアを生成し、公開鍵（VAPIDキー）を控える。
+
+2) サイト直下に firebase-messaging-sw.js を置く（下記内容）。
+
+3) order.html に「通知トークン取得」処理を追加（希望があれば当方で組み込みます）。
+   概略：firebase-messaging-compat.js を読み込み、通知許可後に
+   getToken({ vapidKey }) で取得したトークンを、その注文ドキュメントの
+   token フィールドへ保存する。
+
+4) Cloud Function をデプロイ（下記）。orders の status が calling に
+   変わったら、保存済み token 宛に通知を送信する。
+
+
+-------------------------------------------------------
+ firebase-messaging-sw.js （サイト直下に配置）
+-------------------------------------------------------
+importScripts('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js');
+
+firebase.initializeApp({
+  apiKey: "AIzaSyBhcZR0uO8384IGtkOE_8mRx7MatiJX4sQ",
+  authDomain: "another-sky-kuji-9606f.firebaseapp.com",
+  projectId: "another-sky-kuji-9606f",
+  messagingSenderId: "372480688726",
+  appId: "1:372480688726:web:6b77d1983691056cf471f7"
+});
+
+const messaging = firebase.messaging();
+messaging.onBackgroundMessage(function(payload){
+  self.registration.showNotification(
+    payload.notification.title || 'お呼び出しです',
+    { body: payload.notification.body || 'カウンターへお越しください' }
+  );
+});
+
+
+-------------------------------------------------------
+ Cloud Function （functions/index.js）
+-------------------------------------------------------
+// firebase init 済みのプロジェクトで:
+//   firebase init functions   (JavaScript を選択)
+//   下記を functions/index.js に貼り、 firebase deploy --only functions
+
+const functions = require("firebase-functions");
+const admin = require("firebase-admin");
+admin.initializeApp();
+
+exports.notifyOnCalling = functions.firestore
+  .document("as_orders/{code}")
+  .onUpdate(async (change, context) => {
+    const before = change.before.data();
+    const after = change.after.data();
+    if (before.status !== "calling" && after.status === "calling" && after.token) {
+      const no = after.seq ? ("No." + String(after.seq).padStart(3, "0")) : after.code;
+      await admin.messaging().send({
+        token: after.token,
+        notification: {
+          title: "Another Sky｜お呼び出しです",
+          body: no + " の方、カウンターへお越しください"
+        }
+      });
+    }
+  });
+
+
+-------------------------------------------------------
+ 補足
+-------------------------------------------------------
+・トークン取得処理を order.html に組み込む部分は、ご希望があれば
+  こちらで対応します（VAPIDキーをお知らせいただければ設定します）。
+・Blaze プランでも、この規模の利用なら無料枠にほぼ収まります。
+・iPhone の制約が大きいため、当日運用は「ページを開いたまま待って
+  もらう（＝いまの標準動作）」を基本にするのが確実です。

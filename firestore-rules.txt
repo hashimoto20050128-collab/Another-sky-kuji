@@ -1,0 +1,154 @@
+========================================================
+ Another Sky 抽選くじ ｜ Firestore セキュリティルール
+========================================================
+
+貼り付け場所：
+  Firebase コンソール → Firestore Database → 「ルール」タブ
+  → 中身を下記に置き換えて「公開」
+
+コレクション名は as_kuji_tickets です（アプリの COLLECTION と一致）。
+
+
+--------------------------------------------------------
+【推奨】しっかり版
+--------------------------------------------------------
+設定（firebaseConfig）が公開されても、これで実運用に耐えます。
+・誰でも読める（抽選端末が状態を確認するため）
+・券の新規発行は「正しい形・未使用」のみ許可
+・使用は used を false→true にする時だけ許可（当たり金額の書き換え・使用済みの取り消しは不可）
+・クライアントからの削除は禁止（全削除が必要な時はコンソールから）
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /as_kuji_tickets/{code} {
+
+      allow read: if true;
+
+      allow create: if request.resource.data.keys().hasOnly(['prize','used','usedAt','day','seq'])
+                    && request.resource.data.used == false
+                    && request.resource.data.prize is int
+                    && request.resource.data.day is string;
+
+      allow update: if resource.data.used == false
+                    && request.resource.data.used == true
+                    && request.resource.data.prize == resource.data.prize
+                    && request.resource.data.day == resource.data.day;
+
+      allow delete: if false;
+    }
+  }
+}
+
+※ このルールだと、アプリ内の「全データ削除」ボタンは効きません。
+   リセットしたい時は、Firebase コンソールでコレクションを削除してください。
+
+
+--------------------------------------------------------
+【お手軽版】テスト用（短期・関係者限定向け）
+--------------------------------------------------------
+アプリの「全データ削除」も動きます。ただし as_kuji_tickets を
+知っている人なら誰でも読み書き・削除できてしまうため、
+「当日だけ」「URLを外部に出さない」前提での割り切り運用に。
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /as_kuji_tickets/{code} {
+      allow read, create, update, delete: if true;
+    }
+  }
+}
+
+
+--------------------------------------------------------
+【最も安全・推奨】店員ログイン必須版（このアプリ用）
+--------------------------------------------------------
+アプリにログイン画面を組み込み済みです。この構成では、
+ログインした店員だけが読み取り・発行・使用・削除でき、
+config（apiKey 等）が漏れても認証情報がなければ何もできません。
+
+・読み取り／書き込みともにログイン必須
+・発行は「正しい形・未使用」のみ、使用は false→true のみ、
+  当たり金額の書き換えは不可（ログイン後でも改ざんできない）
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /as_kuji_tickets/{code} {
+
+      allow read: if request.auth != null;
+
+      allow create: if request.auth != null
+                    && request.resource.data.keys().hasOnly(['prize','used','usedAt','day','seq'])
+                    && request.resource.data.used == false;
+
+      allow update: if request.auth != null
+                    && resource.data.used == false
+                    && request.resource.data.used == true
+                    && request.resource.data.prize == resource.data.prize;
+
+      allow delete: if request.auth != null;
+    }
+  }
+}
+
+■ 店員アカウントの作り方（Firebase コンソール）
+  1. Authentication → Sign-in method → 「メール/パスワード」を有効化
+  2. Authentication → Users → 「ユーザーを追加」
+     店員用のメールアドレスとパスワードを登録（1〜数個でOK）
+  3. アプリを開くとログイン画面が出るので、その情報でログイン
+  ※ 一度ログインすれば、その端末では次回以降ログイン状態が保持されます
+  ※ 集計画面の「ログアウト」で解除できます
+
+
+--------------------------------------------------------
+補足
+--------------------------------------------------------
+・firebaseConfig（apiKey 等）は「秘密」ではなく公開前提の値です。
+  データを守るのは上のルールであって、HTMLを隠すことではありません。
+・「しっかり版」なら、config が見えても当たりの改ざん・二重使用は防げます。
+・全端末は同じ Firebase プロジェクトを見れば OK。
+  ただしカメラ読取は https（GitHub Pages / Firebase Hosting 等）が必要です。
+
+
+========================================================
+ 追加：呼び出し／受け渡し管理（as_orders コレクション）
+========================================================
+お客様ページ（order.html）とお店の呼び出し管理ページ（pickup.html）用。
+・お客さんは自分の注文を「登録（作成）」でき、状態を「閲覧」できる
+・「呼び出し」「受け渡し済み」への変更・削除は、ログインした店員のみ
+上の as_kuji_tickets のルールに、この match ブロックを追記してください。
+
+    match /as_orders/{code} {
+      allow read:   if true;                       // 状態の閲覧（客・店員）
+      allow create: if true                        // 客がQRから登録
+                    && request.resource.data.status == "waiting";
+      allow update, delete: if request.auth != null; // 呼出・受渡・削除は店員のみ
+    }
+
+※ 全体像（tickets と orders を1つにまとめた例）：
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /as_kuji_tickets/{code} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+                    && request.resource.data.keys().hasOnly(['prize','used','usedAt','day','seq'])
+                    && request.resource.data.used == false;
+      allow update: if request.auth != null
+                    && resource.data.used == false
+                    && request.resource.data.used == true
+                    && request.resource.data.prize == resource.data.prize;
+      allow delete: if request.auth != null;
+    }
+
+    match /as_orders/{code} {
+      allow read:   if true;
+      allow create: if true && request.resource.data.status == "waiting";
+      allow update, delete: if request.auth != null;
+    }
+  }
+}
