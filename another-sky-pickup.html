@@ -132,10 +132,12 @@ function render(orders){
         '<div class="actions">'+
           '<button class="btn call slim" data-call="'+o.code+'">'+(calling?'再呼出':'呼び出し')+'</button>'+
           '<button class="btn ghost slim" data-done="'+o.code+'">受渡済</button>'+
+          '<button class="btn ghost slim" data-del="'+o.code+'" style="min-width:auto;padding:9px 11px">✕</button>'+
         '</div></div>';
     }).join("");
     A.querySelectorAll("[data-call]").forEach(b=>b.onclick=()=>setStatus(b.dataset.call,"calling"));
     A.querySelectorAll("[data-done]").forEach(b=>b.onclick=()=>setStatus(b.dataset.done,"done"));
+    A.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{ if(confirm("この注文を一覧から削除します。よろしいですか？")) col.doc(b.dataset.del).delete().catch(()=>alert("削除できませんでした。")); });
   }
 
   $("done").innerHTML = done.length ? done.reverse().map(o=>

@@ -108,12 +108,18 @@ let ready=false;
 
 function padNo(s){ return "No."+String(s).padStart(3,"0"); }
 function numOf(o){ return o.seq?padNo(o.seq):o.code; }
+const VALID=/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}$/;   // 実際の券コードで使う文字だけ
+function validCode(c){ return VALID.test(c||""); }
 function parseTicket(txt){
   txt=(txt||"").trim();
   let c=null,s=null;
   const mc=txt.match(/[?&]c=([A-Za-z0-9]{4})/); if(mc)c=mc[1].toUpperCase();
   const mn=txt.match(/[?&]n=(\d+)/); if(mn)s=parseInt(mn[1],10);
-  if(!c){ const t=txt.replace(/^ASQR:/i,""); const m=t.match(/([A-Za-z0-9]{4})\s*$/); if(m)c=m[1].toUpperCase(); }
+  if(!c && !/https?:\/\//i.test(txt)){   // URLの末尾（.html等）を誤検出しない
+    const t=txt.replace(/^ASQR:/i,"");
+    const m=t.match(/([A-Za-z0-9]{4})\s*$/);
+    if(m)c=m[1].toUpperCase();
+  }
   return {code:c,seq:s};
 }
 
@@ -122,8 +128,8 @@ const LS="as_orders_v2";
 function saveOrders(){ try{ localStorage.setItem(LS,JSON.stringify(orders)); }catch(e){} }
 function loadOrders(){
   try{
-    const r=localStorage.getItem(LS); if(r)return JSON.parse(r)||[];
-    const old=localStorage.getItem("as_order_last"); if(old){const o=JSON.parse(old);if(o&&o.code)return [o];}
+    const r=localStorage.getItem(LS); if(r)return (JSON.parse(r)||[]).filter(o=>o&&validCode(o.code));
+    const old=localStorage.getItem("as_order_last"); if(old){const o=JSON.parse(old);if(o&&validCode(o.code))return [o];}
   }catch(e){}
   return [];
 }
@@ -132,7 +138,16 @@ function loadOrders(){
 let audioCtx=null;
 function ensureAudio(){ if(!audioCtx){try{audioCtx=new (window.AudioContext||window.webkitAudioContext)();}catch(e){}} return audioCtx; }
 function primeAudio(){const c=ensureAudio();if(c&&c.state==="suspended")c.resume();}
-document.addEventListener("pointerdown",primeAudio);
+let armed=false;
+function arm(){
+  if(armed)return; armed=true; ready=true;
+  primeAudio();
+  try{ if("Notification" in window && Notification.permission==="default") Notification.requestPermission(); }catch(e){}
+  renderReady();
+}
+document.addEventListener("pointerdown",arm);
+document.addEventListener("touchstart",arm);
+document.addEventListener("click",arm);
 function tone(freqs,dur,gain){const c=ensureAudio();if(!c)return;if(c.state==="suspended")c.resume();let t=c.currentTime;freqs.forEach(f=>{const o=c.createOscillator(),g=c.createGain();o.type="sine";o.frequency.value=f;g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(gain||0.25,t+0.01);g.gain.exponentialRampToValueAtTime(0.0001,t+dur);o.connect(g).connect(c.destination);o.start(t);o.stop(t+dur+0.02);t+=dur;});}
 function alarm(){let n=0;const iv=setInterval(()=>{tone([1319,988,1319],0.16,0.3);if(++n>=4)clearInterval(iv);},600);tone([1319,988,1319],0.16,0.3);try{navigator.vibrate&&navigator.vibrate([300,150,300,150,600]);}catch(e){}}
 
@@ -171,6 +186,7 @@ $("add-btn").onclick=()=>{ showScan(); };
 
 /* ---- register + subscribe (per order) ---- */
 async function addOrder(code,seq){
+  if(!validCode(code)) return;
   if(!orders.some(o=>o.code===code)){ orders.push({code,seq:seq||0}); saveOrders(); }
   const ref=db.collection(ORDERS).doc(code);
   try{ const snap=await ref.get(); if(!snap.exists) await ref.set({code,seq:seq||0,status:"waiting",registeredAt:Date.now()}); }catch(e){}
@@ -200,8 +216,7 @@ const STLABEL={waiting:"受付済み",calling:"呼び出し中",done:"受け渡�
 function renderReady(){
   $("ready-wrap").innerHTML = ready
     ? '<p class="note" style="color:var(--aurora-a)">通知オン：呼び出しをお待ちください。</p>'
-    : '<button class="btn" id="ready-btn">呼び出し通知をオンにする</button><p class="note">※音・バイブ・通知でお知らせします。上のボタンを一度タップしてください。</p>';
-  const rb=$("ready-btn"); if(rb)rb.onclick=enableAlerts;
+    : '<p class="note">画面を1回タップすると、呼び出し通知（音・バイブ・通知）がオンになります。</p>';
 }
 function renderList(){
   if(!orders.length){ $("olist").innerHTML='<p class="note">登録された券がありません。</p>'; return; }
@@ -209,11 +224,6 @@ function renderList(){
     const st=statusMap[o.code]||"waiting";
     return '<div class="ocard '+st+'"><span class="onum display">'+numOf(o)+'</span><span class="statusbadge '+st+'">'+STLABEL[st]+'</span></div>';
   }).join("");
-}
-async function enableAlerts(){
-  ready=true; ensureAudio(); tone([880,1319],0.12,0.2);
-  try{ if("Notification" in window && Notification.permission==="default") await Notification.requestPermission(); }catch(e){}
-  renderReady();
 }
 $("call-close").onclick=()=>$("call").classList.remove("on");
 

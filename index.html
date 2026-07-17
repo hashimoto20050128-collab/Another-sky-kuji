@@ -309,7 +309,7 @@ const FREE=99999;                              // 無料 の内部値
 const WIN=[{v:FREE,label:"無料"},{v:200,label:"200円引き"},{v:100,label:"100円引き"},{v:50,label:"50円引き"}];
 const PRINT_COLS=3;
 
-let Backend,CLOUD=false,db,col,currentTab="redeem",busy=false,lastTickets=null,adminDay="ALL",adminAxis="created";
+let Backend,CLOUD=false,db,col,ordersCol,currentTab="redeem",busy=false,lastTickets=null,adminDay="ALL",adminAxis="created";
 
 function prizeLabel(v){ return v===FREE?"無料":(v===0?"はずれ":v+"円引き"); }
 function todayStr(){ const d=new Date(); const p=n=>String(n).padStart(2,"0"); return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate()); }
@@ -368,7 +368,7 @@ const LocalBackend={
     if(!d)return{status:"notfound"};
     if(d.used)return{status:"used",usedAt:d.usedAt};
     d.used=true;d.usedAt=Date.now();d.usedDay=todayStr();await this.persist();
-    return{status:"ok",prize:d.prize};
+    return{status:"ok",prize:d.prize,seq:d.seq};
   },
   async all(){return Object.entries(state.tickets).map(([code,d])=>({code,...d}));},
   async reset(){state.tickets={};await Store.set(KEY,"");}
@@ -377,7 +377,7 @@ const CloudBackend={
   async init(){},
   async existingCodes(){const s=await col.get();return new Set(s.docs.map(d=>d.id));},
   async append(t){const codes=Object.keys(t);for(const part of chunk(codes,450)){const b=db.batch();part.forEach(c=>b.set(col.doc(c),t[c]));await b.commit();}},
-  async redeem(code){const ref=col.doc(code);return await db.runTransaction(async tx=>{const s=await tx.get(ref);if(!s.exists)return{status:"notfound"};const d=s.data();if(d.used)return{status:"used",usedAt:d.usedAt};tx.update(ref,{used:true,usedAt:Date.now(),usedDay:todayStr()});return{status:"ok",prize:d.prize};});},
+  async redeem(code){const ref=col.doc(code);return await db.runTransaction(async tx=>{const s=await tx.get(ref);if(!s.exists)return{status:"notfound"};const d=s.data();if(d.used)return{status:"used",usedAt:d.usedAt};tx.update(ref,{used:true,usedAt:Date.now(),usedDay:todayStr()});return{status:"ok",prize:d.prize,seq:d.seq};});},
   async all(){const s=await col.get();return s.docs.map(d=>({code:d.id,...d.data()}));},
   async reset(){const s=await col.get();for(const part of chunk(s.docs,450)){const b=db.batch();part.forEach(d=>b.delete(d.ref));await b.commit();}}
 };
@@ -447,6 +447,7 @@ function qrText(code,seq){ return INFO_URL ? (INFO_URL+(INFO_URL.includes("?")?"
 function parseCode(txt){
   txt=(txt||"").trim();
   const m=txt.match(/[?&]c=([A-Za-z0-9]{4})/); if(m) return m[1].toUpperCase();
+  if(/https?:\/\//i.test(txt)) return "";   // c=の無いURLはコード無し扱い（.html等の誤検出防止）
   txt=txt.replace(/^ASQR:/i,"");
   const m2=txt.match(/([A-Za-z0-9]{4})\s*$/);
   return (m2?m2[1]:txt).toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,4);
@@ -524,8 +525,15 @@ async function processCode(code){
   if(r.status==="used"){soundError();const w=r.usedAt?new Date(r.usedAt).toLocaleString("ja-JP",{hour:"2-digit",minute:"2-digit"}):"";fb("この券は使用済みです"+(w?"（"+w+"）":"")+"。",true);setTimeout(()=>scanLock=false,1800);return;}
   soundSuccess();
   codeInput.value="";
+  ensureOrder(code, r.seq);        // 呼び出し一覧へ自動追加
   showReveal(r.prize);            // scanLock はリザルトを閉じたら解除
   if(currentTab==="admin")renderAdmin();
+}
+
+/* 抽選で読み取った券を、呼び出し管理の一覧（as_orders）へ自動登録（クラウド時のみ） */
+async function ensureOrder(code,seq){
+  if(!CLOUD || !ordersCol) return;
+  try{ const ref=ordersCol.doc(code); const snap=await ref.get(); if(!snap.exists) await ref.set({code,seq:seq||0,status:"waiting",registeredAt:Date.now()}); }catch(e){}
 }
 
 /* manual input toggle */
@@ -713,7 +721,7 @@ document.getElementById("login-pw").addEventListener("keydown",e=>{if(e.key==="E
   if(configured){
     try{
       firebase.initializeApp(cfg);
-      db=firebase.firestore();col=db.collection(COLLECTION);Backend=CloudBackend;CLOUD=true;auth=firebase.auth();
+      db=firebase.firestore();col=db.collection(COLLECTION);ordersCol=db.collection("as_orders");Backend=CloudBackend;CLOUD=true;auth=firebase.auth();
       document.getElementById("login").classList.add("on"); // 認証確定まで表示
       auth.onAuthStateChanged(user=>{
         if(user){
