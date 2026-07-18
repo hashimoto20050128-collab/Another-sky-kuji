@@ -117,15 +117,15 @@
 
   /* ===== Tickets (長方形・切りやすく) ===== */
   #tickets{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-top:16px}
-  .ticket{background:#fff;color:#12183a;border-radius:0;padding:0;text-align:center;position:relative;overflow:hidden;border:1px dashed #b9c0da;margin:-0.5px;height:375px;display:flex;flex-direction:column}
+  .ticket{background:#fff;color:#12183a;border-radius:0;padding:0;text-align:center;position:relative;overflow:hidden;border:1px dashed #b9c0da;margin:-0.5px;height:430px;display:flex;flex-direction:column}
   .ticket.empty{visibility:hidden}
   .ticket .band{display:block;width:100%;height:7px;flex:none}
   .ticket .inner{padding:9px 10px 8px;flex:1;display:flex;flex-direction:column}
   .ticket .promo{font-family:"Zen Maru Gothic";font-weight:900;font-size:10px;line-height:1.35;color:#c2410c;margin:6px 2px 4px}
   .ticket .promo b{color:#b91c1c;font-size:11px}
   .ticket .tt{font-family:"Zen Maru Gothic";font-weight:900;font-size:9.5px;margin:2px 0 6px;letter-spacing:.04em;color:#3a4790}
-  .ticket .qrbox{display:flex;justify-content:center;margin:0 auto 6px}
-  .ticket .qrbox img,.ticket .qrbox canvas{width:80px!important;height:80px!important}
+  .ticket .qrbox{display:flex;justify-content:center;margin:0 auto 6px;background:#fff;padding:5px;border-radius:2px}
+  .ticket .qrbox img,.ticket .qrbox canvas{width:120px!important;height:120px!important}
   .ticket .tcode{font-family:"Zen Maru Gothic";font-weight:900;font-size:20px;letter-spacing:.16em;color:#12183a}
   .ticket .ccode{font-size:10px;color:#8b93b8;letter-spacing:.06em;margin-top:3px}
   .ticket .ccode b{color:#12183a;font-family:"Zen Maru Gothic";letter-spacing:.14em}
@@ -135,19 +135,19 @@
   .ticket .stub{border-top:1px dashed #9aa1c4;margin-top:auto;padding:8px 6px 8px;display:flex;flex-direction:column;align-items:center;gap:5px;position:relative}
   .ticket .stub .scis{position:absolute;left:4px;top:-8px;font-size:11px;color:#9aa1c4}
   .ticket .stub-row{display:flex;align-items:center;justify-content:center;gap:8px}
-  .ticket .stub-qr{flex:none;display:flex}
-  .ticket .stub-qr img,.ticket .stub-qr canvas{width:52px!important;height:52px!important}
+  .ticket .stub-qr{flex:none;display:flex;background:#fff;padding:4px;border-radius:2px}
+  .ticket .stub-qr img,.ticket .stub-qr canvas{width:76px!important;height:76px!important}
   .ticket .stub-info{text-align:left;color:#3a4790;font-weight:700;line-height:1.3}
   .ticket .stub-info .stub-no{font-size:10px}
   .ticket .stub-info .stub-no b{font-family:"Zen Maru Gothic";font-size:15px;letter-spacing:.1em}
   .ticket .stub-cap2{font-size:8px;color:#5a6294;font-weight:700;line-height:1.35;text-align:center}
   /* back = 注文票 */
   .ticket.back .inner{padding:30px 14px 16px;text-align:left}
-  .ticket.back .bt{font-family:"Zen Maru Gothic";font-weight:900;font-size:12px;color:#3a4790;text-align:center;margin-bottom:22px;letter-spacing:.04em}
-  .ticket.back .orow{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;margin:0 0 34px}
-  .ticket.back .box{display:inline-block;flex:none;width:34px;height:24px;border:1px solid #7c86ad}
-  .ticket.back .line{flex:1;border-bottom:1px solid #7c86ad;height:24px}
-  .ticket.back .bno{position:absolute;top:6px;right:8px;font-size:9px;color:#9aa1c4;font-weight:700;font-family:"Zen Maru Gothic"}
+  .ticket.back .bt{font-family:"Zen Maru Gothic";font-weight:700;font-size:12px;color:#aab0c8;text-align:center;margin-bottom:22px;letter-spacing:.04em}
+  .ticket.back .orow{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:#aab0c8;margin:0 0 34px}
+  .ticket.back .box{display:inline-block;flex:none;width:34px;height:24px;border:1px solid #c9cee0}
+  .ticket.back .line{flex:1;border-bottom:1px solid #c9cee0;height:24px}
+  .ticket.back .bno{position:absolute;top:6px;right:8px;font-size:9px;color:#c2c7db;font-weight:700;font-family:"Zen Maru Gothic"}
 
   .stat-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px}
   .stat{background:rgba(11,16,38,.45);border:1px solid var(--line);border-radius:14px;padding:14px;text-align:center}
@@ -502,8 +502,8 @@ function renderSide(side){
   if(side==="front"){
     Object.keys(lastTickets).forEach(code=>{
       var _t=qrText(code,lastTickets[code].seq);
-      try{new QRCode(document.getElementById("qr-"+code),{text:_t,width:80,height:80,colorDark:"#12183a",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M});}catch(e){}
-      try{var _s=document.getElementById("sqr-"+code); if(_s) new QRCode(_s,{text:_t,width:56,height:56,colorDark:"#12183a",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M});}catch(e){}
+      try{new QRCode(document.getElementById("qr-"+code),{text:_t,width:360,height:360,colorDark:"#000000",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.Q});}catch(e){}
+      try{var _s=document.getElementById("sqr-"+code); if(_s) new QRCode(_s,{text:_t,width:300,height:300,colorDark:"#000000",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.Q});}catch(e){}
     });
   }
 }
