@@ -121,10 +121,8 @@ service cloud.firestore {
 上の as_kuji_tickets のルールに、この match ブロックを追記してください。
 
     match /as_orders/{code} {
-      allow read:   if true;                       // 状態の閲覧（客・店員）
-      allow create: if true                        // 客がQRから登録
-                    && request.resource.data.status == "waiting";
-      allow update, delete: if request.auth != null; // 呼出・受渡・削除は店員のみ
+      allow read:  if true;                        // 状態の閲覧（客・店員）
+      allow write: if request.auth != null;        // 作成・呼出・受渡・削除は店員（ログイン）のみ
     }
 
 ※ 全体像（tickets と orders を1つにまとめた例）：
@@ -146,9 +144,8 @@ service cloud.firestore {
     }
 
     match /as_orders/{code} {
-      allow read:   if true;
-      allow create: if true && request.resource.data.status == "waiting";
-      allow update, delete: if request.auth != null;
+      allow read:  if true;                        // 状態の閲覧（客・店員）
+      allow write: if request.auth != null;        // 作成・呼出・受渡・削除は店員（ログイン）のみ
     }
   }
 }

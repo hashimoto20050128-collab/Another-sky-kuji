@@ -86,6 +86,7 @@
   .result .yen{font-size:26px}
   .result .sub{color:var(--ink);font-weight:700;margin-top:10px;font-size:16px}
   .result.miss .amount{background:linear-gradient(180deg,#dfe6ff,#93a0d8);-webkit-background-clip:text;background-clip:text;color:transparent;font-size:44px}
+  .result.free .amount{font-size:52px}
   .result .again{margin-top:26px}
 
   .field{margin-bottom:14px}
@@ -312,12 +313,12 @@ const KEY="another_sky_kuji_v2";
 const CHARS="ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const COLLECTION="as_kuji_tickets";
 const FREE=99999;                              // 無料 の内部値
-const WIN=[{v:FREE,label:"無料"},{v:200,label:"200円引き"},{v:100,label:"100円引き"},{v:50,label:"50円引き"}];
+const WIN=[{v:FREE,label:"1品無料"},{v:200,label:"200円引き"},{v:100,label:"100円引き"},{v:50,label:"50円引き"}];
 const PRINT_COLS=3;
 
 let Backend,CLOUD=false,db,col,ordersCol,currentTab="redeem",busy=false,lastTickets=null,adminDay="ALL",adminAxis="created";
 
-function prizeLabel(v){ return v===FREE?"無料":(v===0?"はずれ":v+"円引き"); }
+function prizeLabel(v){ return v===FREE?"1品無料":(v===0?"はずれ":v+"円引き"); }
 function todayStr(){ const d=new Date(); const p=n=>String(n).padStart(2,"0"); return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate()); }
 function dateStr(ts){ const d=new Date(ts); const p=n=>String(n).padStart(2,"0"); return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate()); }
 function usedDayOf(r){ return r.usedDay || (r.usedAt?dateStr(r.usedAt):null); }
@@ -601,19 +602,19 @@ function showReveal(prize){
     clearInterval(tick);cap.style.display="none";susp.style.display="none";
     if(free){
       document.getElementById("r-badge").textContent="☆ 大当たり ☆";
-      document.getElementById("r-amount").textContent="無料！";
-      document.getElementById("r-sub").textContent="おめでとう！今回のお会計は無料です！";
-      res.classList.add("on");res.classList.remove("miss");burst();setTimeout(burst,500);
+      document.getElementById("r-amount").textContent="1品無料！";
+      document.getElementById("r-sub").textContent="おめでとう！お好きな1品が無料になります！";
+      res.classList.add("on","free");res.classList.remove("miss");burst();setTimeout(burst,500);
     }else if(win){
       document.getElementById("r-badge").textContent="★ あたり ★";
       document.getElementById("r-amount").innerHTML=prize+'<span class="yen">円引き</span>';
       document.getElementById("r-sub").textContent="お会計から "+prize+"円引きになります！";
-      res.classList.add("on");res.classList.remove("miss");burst();
+      res.classList.add("on");res.classList.remove("miss","free");burst();
     }else{
       document.getElementById("r-badge").textContent="ざんねん…";
       document.getElementById("r-amount").textContent="はずれ";
       document.getElementById("r-sub").textContent="焼きそば・はしまきで温まってね🎏";
-      res.classList.add("on","miss");
+      res.classList.add("on","miss");res.classList.remove("free");
     }
   },2100);
 }
@@ -740,7 +741,6 @@ document.getElementById("login-pw").addEventListener("keydown",e=>{if(e.key==="E
         if(user){
           document.getElementById("login").classList.remove("on");
           setStatusPill(user.email);
-          if(!authedInit){authedInit=true;col.onSnapshot(()=>{if(currentTab==="admin")renderAdmin();},()=>{});}
           if(currentTab==="admin")renderAdmin();
           maybeStartCam();
         }else{

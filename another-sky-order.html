@@ -42,6 +42,7 @@
   .pos{font-size:11.5px;color:var(--muted)}
   .statusbadge{display:inline-block;font-weight:800;font-size:12px;padding:6px 13px;border-radius:999px;border:1px solid var(--line);white-space:nowrap}
   .statusbadge.waiting{color:var(--aurora-a);border-color:rgba(94,230,200,.4)}
+  .statusbadge.pending{color:var(--muted);border-color:var(--line)}
   .statusbadge.calling{color:#0a0f24;background:linear-gradient(135deg,var(--gold),var(--gold-deep));border-color:transparent}
   .statusbadge.done{color:var(--muted)}
   #call{position:fixed;inset:0;z-index:50;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;background:linear-gradient(135deg,var(--gold),var(--gold-deep));color:#3a1d00}
@@ -75,7 +76,7 @@
   <div class="card" id="status-view" style="display:none">
     <div class="kicker">PICKUP</div>
     <p class="h display">受け取り状況</p>
-    <div class="wait" id="wait"></div>
+    <div class="wait" id="wait" style="display:none"></div>
     <div id="ready-wrap"></div>
     <div class="olist" id="olist"></div>
     <button class="btn ghost" id="add-btn" style="margin-top:14px">＋ 券を追加で登録する</button>
@@ -106,10 +107,9 @@ const $=id=>document.getElementById(id);
 firebase.initializeApp(FIREBASE_CONFIG);
 const db=firebase.firestore();
 
-let orders=[];          // 自分の登録券 [{code,seq}]
-let allDocs=[];         // 全注文（待ち人数・状態用）
-const lastMap={};       // code -> 直近の状態
-let colUnsub=null, ready=false;
+let orders=[];                       // 自分の登録券 [{code,seq}]
+const subs={}, statusMap={}, lastMap={};   // 自分の券だけを購読
+let ready=false;
 
 function padNo(s){ return "No."+String(s).padStart(3,"0"); }
 function numOf(o){ return o.seq?padNo(o.seq):o.code; }
@@ -124,7 +124,7 @@ function parseTicket(txt){
   return {code:c,seq:s};
 }
 
-/* ---- この端末に登録済みの券を記憶（複数対応） ---- */
+/* ---- 登録済みの券を記憶（複数対応） ---- */
 const LS="as_orders_v2";
 function saveOrders(){ try{ localStorage.setItem(LS,JSON.stringify(orders)); }catch(e){} }
 function loadOrders(){
@@ -147,7 +147,7 @@ function tone(freqs,dur,gain){const c=ensureAudio();if(!c)return;if(c.state==="s
 function alarm(){let n=0;const iv=setInterval(()=>{tone([1319,988,1319],0.16,0.3);if(++n>=4)clearInterval(iv);},600);tone([1319,988,1319],0.16,0.3);try{navigator.vibrate&&navigator.vibrate([300,150,300,150,600]);}catch(e){}}
 
 /* ---- views ---- */
-function showStatusView(){ $("scan-view").style.display="none"; $("status-view").style.display="block"; $("foot").textContent="このページを閉じても、もう一度開けば状況を確認できます。呼び出しを受け取るにはページを開いたままにしてください。"; renderReady(); renderList(); renderWait(); }
+function showStatusView(){ $("scan-view").style.display="none"; $("status-view").style.display="block"; $("foot").textContent="このページを閉じても、もう一度開けば状況を確認できます。呼び出しを受け取るにはページを開いたままにしてください。"; renderReady(); renderList(); startWaitingPoll(); }
 function showScan(){ $("status-view").style.display="none"; $("scan-view").style.display="block"; $("back-btn").style.display=orders.length?"block":"none"; startCam(); }
 
 /* ---- camera / manual ---- */
@@ -179,52 +179,61 @@ $("mreg-btn").onclick=()=>{ const v=$("mcode").value.trim().toUpperCase(); if(!v
 $("back-btn").onclick=()=>{ stopCam(); showStatusView(); };
 $("add-btn").onclick=()=>{ showScan(); };
 
-/* ---- register + 全体購読 ---- */
+/* ---- register + 自分の券だけを購読（軽量） ---- */
 async function addOrder(code,seq){
   if(!validCode(code)) return;
   if(!orders.some(o=>o.code===code)){ orders.push({code,seq:seq||0}); saveOrders(); }
   const ref=db.collection(ORDERS).doc(code);
-  try{ const snap=await ref.get(); if(!snap.exists) await ref.set({code,seq:seq||0,status:"waiting",registeredAt:Date.now()}); }catch(e){}
-  startColSub();
+  if(!subs[code]){
+    subs[code]=ref.onSnapshot(d=>{
+      const dd=d.exists?d.data():null;
+      const st=dd?(dd.status||"waiting"):"pending";   // 店員が抽選で読み取るまでは pending（一覧に載らない）
+      if(dd&&dd.seq){ const o=orders.find(x=>x.code===code); if(o&&!o.seq){o.seq=dd.seq;saveOrders();} }
+      const was=lastMap[code]; statusMap[code]=st; lastMap[code]=st;
+      renderList();
+      if(st==="calling" && was!=="calling") triggerCall();
+      else if($("call").classList.contains("on")){ const nums=myCalling().map(numOf); if(nums.length)$("call-num").textContent=nums.join("　"); else $("call").classList.remove("on"); }
+    },()=>{});
+  }
+  startWaitingPoll();
   renderList();
 }
-function startColSub(){
-  if(colUnsub)return;
-  colUnsub=db.collection(ORDERS).onSnapshot(s=>{ allDocs=s.docs.map(d=>({code:d.id,...d.data()})); onData(); }, ()=>{});
-}
-function docFor(code){ return allDocs.find(d=>d.code===code); }
-function myStatus(code){ const d=docFor(code); return d?(d.status||"waiting"):"waiting"; }
+function myStatus(code){ return statusMap[code]||"waiting"; }
 function myCalling(){ return orders.filter(o=>myStatus(o.code)==="calling"); }
-function waitingCount(){ return allDocs.filter(d=>d.status!=="done").length; }
-function aheadOf(code){ const d=docFor(code); if(!d)return 0; const my=d.registeredAt||0; return allDocs.filter(x=>x.status!=="done" && (x.registeredAt||0)<my).length; }
 
-function onData(){
-  orders.forEach(o=>{ const d=docFor(o.code); if(d&&d.seq&&!o.seq){o.seq=d.seq; saveOrders();} });
-  let newCall=false;
-  orders.forEach(o=>{ const st=myStatus(o.code); if(st==="calling" && lastMap[o.code]!=="calling") newCall=true; lastMap[o.code]=st; });
-  renderList(); renderWait();
-  if(newCall) triggerCall();
-  else if($("call").classList.contains("on")){ const nums=myCalling().map(numOf); if(nums.length)$("call-num").textContent=nums.join("　"); else $("call").classList.remove("on"); }
+/* ---- 待ち人数：集計クエリを一定間隔で取得（読み取りを節約） ---- */
+let pollTimer=null, pollDead=false;
+async function pollWaiting(){
+  if(pollDead)return;
+  try{
+    const agg=await db.collection(ORDERS).where("status","==","waiting").count().get();
+    $("wait").style.display="block";
+    $("wait").innerHTML='現在 <b>'+agg.data().count+'</b> 人が受け取り待ちです';
+  }catch(e){ pollDead=true; $("wait").style.display="none"; if(pollTimer){clearInterval(pollTimer);pollTimer=null;} }
+}
+function startWaitingPoll(){
+  if(pollTimer||pollDead)return;
+  pollWaiting();
+  pollTimer=setInterval(()=>{
+    if(!orders.length || orders.every(o=>myStatus(o.code)==="done")){ clearInterval(pollTimer); pollTimer=null; return; }
+    pollWaiting();
+  }, 60000);
 }
 
 /* ---- render ---- */
-const STLABEL={waiting:"受付済み",calling:"呼び出し中",done:"受け渡し済み"};
+const STLABEL={pending:"受付待ち",waiting:"受付済み",calling:"呼び出し中",done:"受け渡し済み"};
 function renderReady(){
   $("ready-wrap").innerHTML = ready
     ? '<p class="note" style="color:var(--aurora-a)">通知オン：呼び出しをお待ちください。</p>'
     : '<p class="note">画面を1回タップすると、呼び出し通知（音・バイブ・通知）がオンになります。</p>';
-}
-function renderWait(){
-  const n=waitingCount();
-  $("wait").innerHTML='現在 <b>'+n+'</b> 人が受け取り待ちです';
 }
 function renderList(){
   if(!orders.length){ $("olist").innerHTML='<p class="note">登録された券がありません。</p>'; return; }
   $("olist").innerHTML=orders.map(o=>{
     const st=myStatus(o.code);
     let extra="";
-    if(st==="waiting"){ extra='<div class="pos">あなたの番まで あと約 '+aheadOf(o.code)+' 人</div>'; }
-    else if(st==="calling"){ extra='<div class="pos" style="color:var(--gold-deep)">カウンターへお越しください</div>'; }
+    if(st==="pending")extra='<div class="pos">店員がくじ券を読み取ると受付されます</div>';
+    else if(st==="calling")extra='<div class="pos" style="color:var(--gold-deep)">カウンターへお越しください</div>';
     return '<div class="ocard '+st+'"><div class="oinfo"><span class="onum display">'+numOf(o)+'</span>'+extra+'</div><span class="statusbadge '+st+'">'+STLABEL[st]+'</span></div>';
   }).join("");
 }
