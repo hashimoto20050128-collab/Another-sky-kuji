@@ -191,6 +191,7 @@ async function addOrder(code,seq){
       if(dd&&dd.seq){ const o=orders.find(x=>x.code===code); if(o&&!o.seq){o.seq=dd.seq;saveOrders();} }
       const was=lastMap[code]; statusMap[code]=st; lastMap[code]=st;
       renderList();
+      if(was!==undefined && was!==st) pollWaiting();
       if(st==="calling" && was!=="calling") triggerCall();
       else if($("call").classList.contains("on")){ const nums=myCalling().map(numOf); if(nums.length)$("call-num").textContent=nums.join("　"); else $("call").classList.remove("on"); }
     },()=>{});
@@ -201,14 +202,24 @@ async function addOrder(code,seq){
 function myStatus(code){ return statusMap[code]||"waiting"; }
 function myCalling(){ return orders.filter(o=>myStatus(o.code)==="calling"); }
 
-/* ---- 待ち人数：集計クエリを一定間隔で取得（読み取りを節約） ---- */
+/* ---- 待ち人数・自分の前の人数：集計クエリのみ取得（軽量） ---- */
 let pollTimer=null, pollDead=false;
+const aheadMap={};
 async function pollWaiting(){
   if(pollDead)return;
   try{
     const agg=await db.collection(ORDERS).where("status","==","waiting").count().get();
     $("wait").style.display="block";
     $("wait").innerHTML='現在 <b>'+agg.data().count+'</b> 人が受け取り待ちです';
+    // 自分より前（整理番号が小さい）で、まだ受け渡していない人数
+    for(const o of orders){
+      if(myStatus(o.code)!=="waiting" || !o.seq) continue;
+      try{
+        const a=await db.collection(ORDERS).where("status","==","waiting").where("seq","<",o.seq).count().get();
+        aheadMap[o.code]=a.data().count;
+      }catch(e){}
+    }
+    renderList();
   }catch(e){ pollDead=true; $("wait").style.display="none"; if(pollTimer){clearInterval(pollTimer);pollTimer=null;} }
 }
 function startWaitingPoll(){
@@ -234,6 +245,10 @@ function renderList(){
     let extra="";
     if(st==="pending")extra='<div class="pos">店員がくじ券を読み取ると受付されます</div>';
     else if(st==="calling")extra='<div class="pos" style="color:var(--gold-deep)">カウンターへお越しください</div>';
+    else if(st==="waiting"){
+      const a=aheadMap[o.code];
+      extra='<div class="pos">'+(a===undefined?'順番を確認中…':(a===0?'まもなくお呼び出しです':'あなたの前に あと '+a+' 人'))+'</div>';
+    }
     return '<div class="ocard '+st+'"><div class="oinfo"><span class="onum display">'+numOf(o)+'</span>'+extra+'</div><span class="statusbadge '+st+'">'+STLABEL[st]+'</span></div>';
   }).join("");
 }
