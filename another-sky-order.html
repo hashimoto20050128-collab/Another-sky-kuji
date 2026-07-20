@@ -76,7 +76,7 @@
   <div class="card" id="status-view" style="display:none">
     <div class="kicker">PICKUP</div>
     <p class="h display">受け取り状況</p>
-    <div class="wait" id="wait" style="display:none"></div>
+    <div class="wait" id="wait">待ち人数を確認中…</div>
     <div id="ready-wrap"></div>
     <div class="olist" id="olist"></div>
     <button class="btn ghost" id="add-btn" style="margin-top:14px">＋ 券を追加で登録する</button>
@@ -202,28 +202,32 @@ async function addOrder(code,seq){
 function myStatus(code){ return statusMap[code]||"waiting"; }
 function myCalling(){ return orders.filter(o=>myStatus(o.code)==="calling"); }
 
-/* ---- 待ち人数・自分の前の人数：集計クエリのみ取得（軽量） ---- */
-let pollTimer=null, pollDead=false;
+/* ---- 待ち人数・自分の前の人数 ----
+   整理番号はランダムに配るため、順番は「受付された時刻」で数える。
+   複合インデックス不要にするため、未受け渡しの注文を1回読み取って手元で計算。 */
+let pollTimer=null, pollFail=0;
 const aheadMap={};
 async function pollWaiting(){
-  if(pollDead)return;
   try{
-    const agg=await db.collection(ORDERS).where("status","==","waiting").count().get();
+    const snap=await db.collection(ORDERS).where("status","in",["waiting","calling"]).get();
+    const rows=snap.docs.map(d=>({code:d.id,...d.data()}));
+    pollFail=0;
     $("wait").style.display="block";
-    $("wait").innerHTML='現在 <b>'+agg.data().count+'</b> 人が受け取り待ちです';
-    // 自分より前（整理番号が小さい）で、まだ受け渡していない人数
+    $("wait").innerHTML='現在 <b>'+rows.length+'</b> 人が受け取り待ちです';
     for(const o of orders){
-      if(myStatus(o.code)!=="waiting" || !o.seq) continue;
-      try{
-        const a=await db.collection(ORDERS).where("status","==","waiting").where("seq","<",o.seq).count().get();
-        aheadMap[o.code]=a.data().count;
-      }catch(e){}
+      const me=rows.find(r=>r.code===o.code);
+      if(!me || !me.registeredAt){ delete aheadMap[o.code]; continue; }
+      // 自分より先に受付された（registeredAt が小さい）未受け渡しの件数
+      aheadMap[o.code]=rows.filter(r=>r.code!==o.code && (r.registeredAt||0)>0 && r.registeredAt<me.registeredAt).length;
     }
     renderList();
-  }catch(e){ pollDead=true; $("wait").style.display="none"; if(pollTimer){clearInterval(pollTimer);pollTimer=null;} }
+  }catch(e){
+    pollFail++;
+    if(pollFail>=3){ $("wait").style.display="none"; }   // 続けて失敗した時だけ隠す（次回も再試行）
+  }
 }
 function startWaitingPoll(){
-  if(pollTimer||pollDead)return;
+  if(pollTimer)return;
   pollWaiting();
   pollTimer=setInterval(()=>{
     if(!orders.length || orders.every(o=>myStatus(o.code)==="done")){ clearInterval(pollTimer); pollTimer=null; return; }
